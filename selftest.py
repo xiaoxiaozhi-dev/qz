@@ -167,9 +167,9 @@ def run(out=None):
             from maintenance.configuration import load
             cfg = load()
             check("默认配置与用户设置能合并", isinstance(cfg, dict))
-            check("ports 有 maya/max",
+            check("ports 有 maya/max/blender",
                   set(cfg.get("bridge", {}).get("ports", {}))
-                  == {"maya", "max"},
+                  == {"maya", "max", "blender"},
                   cfg.get("bridge", {}).get("ports"))
         except Exception as e:
             check("默认配置与用户设置能合并", False, repr(e))

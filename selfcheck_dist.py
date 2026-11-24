@@ -70,8 +70,8 @@ def main():
             check("★ defaults.json 能解析", isinstance(data, dict))
             check("★ 有 bridge 段", "bridge" in data, list(data))
             ports = data.get("bridge", {}).get("ports", {})
-            check("★ ports 有 maya/max",
-                  set(ports) == {"maya", "max"}, ports)
+            check("★ ports 有 maya/max/blender",
+                  set(ports) == {"maya", "max", "blender"}, ports)
         except Exception as e:
             check("★ defaults.json 能解析", False, repr(e))
 

@@ -1,0 +1,21 @@
+{
+  "bridge": {
+    "host": "127.0.0.1",
+    "ports": {
+      "maya": 17023,
+      "max": 17024,
+      "blender": 17025
+    },
+    "timeout": 10,
+    "interval": 10
+  },
+
+  "ui": {
+    "theme": "dark",
+    "remember_layout": true
+  },
+
+  "plugins": {
+    "dir": ""
+  }
+}

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Qz Tools 图标：纯几何路径，不用 <text>（依赖系统字体，16px 下会糊） -->
+  <defs>
+    <linearGradient id="qzGrad" gradientUnits="userSpaceOnUse"
+                    x1="16" y1="16" x2="240" y2="240">
+      <stop offset="0" stop-color="#128a6b"/>
+      <stop offset="1" stop-color="#1a6fc0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#qzGrad)"/>
+
+  <!-- Q：圆角环 + 右下尾巴 -->
+  <rect x="44" y="70" width="112" height="112" rx="46" fill="#ffffff"/>
+  <rect x="74" y="100" width="52" height="52" rx="21" fill="url(#qzGrad)"/>
+  <path d="M126 152 L166 198" stroke="#ffffff" stroke-width="24"
+        stroke-linecap="round" fill="none"/>
+
+  <!-- z：三段折线 -->
+  <path d="M170 100 H230 L170 152 H230" stroke="#ffffff" stroke-width="20"
+        stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

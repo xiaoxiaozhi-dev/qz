@@ -1,0 +1,8 @@
+{
+  "id": "rename_tool",
+  "name": "批量重命名",
+  "dcc": "blender",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": ""
+}

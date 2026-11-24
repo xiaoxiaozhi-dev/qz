@@ -1,0 +1,50 @@
+# ─── Python ────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+
+# 本机 Python 环境；搜索规则另见 .ignore。
+.venv/
+venv/
+env/
+
+# ─── PyInstaller ──────────────────────────
+build/
+dist/
+*.spec
+
+# ─── IDE ──────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── 系统 ─────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── 用户运行时数据 ──────────────────────
+*.log
+.cache/
+.qz-tool/
+/user_plugins/
+
+# ─── 测试产物 ──────────────────────────
+test_screenshot.png
+
+# ─── 本地开发笔记 ──────────────────────
+/memory/
+/.workbuddy/
+
+# Runtime assets and personal settings must never enter source/release history.
+/temp/
+/backups/
+/data/
+/updates/
+/config.json
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

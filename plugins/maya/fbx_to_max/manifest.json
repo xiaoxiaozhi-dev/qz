@@ -1,0 +1,8 @@
+{
+  "id": "fbx_to_max",
+  "name": "选中物体发送到Max",
+  "dcc": "maya",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": ""
+}

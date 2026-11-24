@@ -1,0 +1,8 @@
+{
+  "id": "vertex_color",
+  "name": "顶点颜色",
+  "dcc": "max",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": ""
+}

@@ -1,0 +1,7 @@
+{
+  "id": "js_anim_tools",
+  "name": "JS 动作工具",
+  "dcc": "maya",
+  "icon": "",
+  "widget_factory": "widget.create_widget"
+}

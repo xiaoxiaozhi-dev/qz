@@ -1,0 +1,9 @@
+{
+  "id": "auto_setup",
+  "name": "Install to Max",
+  "dcc": "max",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": "",
+  "category": "settings"
+}

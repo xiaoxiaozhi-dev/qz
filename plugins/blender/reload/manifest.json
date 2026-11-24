@@ -1,0 +1,9 @@
+{
+  "id": "reload",
+  "name": "Reload Plug",
+  "dcc": "blender",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": "",
+  "category": "settings"
+}

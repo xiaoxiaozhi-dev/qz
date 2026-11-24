@@ -1,0 +1,8 @@
+{
+  "id": "rigging_toolbox",
+  "name": "绑定工具箱",
+  "dcc": "max",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": ""
+}

@@ -1,0 +1,5 @@
+/* Plugin-only container. Common controls live in controls.qss. */
+QWidget[qzPluginContent="true"] {
+    background: #2d2d2d;
+    color: #dddddd;
+}

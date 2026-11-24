@@ -1,0 +1,8 @@
+{
+  "id": "skin_weights",
+  "name": "蒙皮权重",
+  "dcc": "maya",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": ""
+}

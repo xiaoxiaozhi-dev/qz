@@ -1,0 +1,60 @@
+/* Shell components only. Controls are defined once in controls.qss. */
+QWidget { font-size: 12px; }
+QMainWindow, QWidget#MainCentral { background: #1e1e1e; }
+QSplitter::handle { background: #2b2b2b; }
+QSplitter::handle:hover { background: #3e3e3e; }
+QWidget#SettingsPanel, QWidget#SettingsInner, QScrollArea#SettingsScrollArea {
+    background: #1e1e1e; border: none;
+}
+QLabel#SettingsTitle { color: #dddddd; font-size: 15px; font-weight: 500; }
+QLabel#SettingsSub { color: #999999; font-size: 11px; margin-top: -14px; }
+QLabel#SettingsSectionTitle { color: #b8b8b8; font-size: 11px; font-weight: 500; }
+QLabel#SettingsRowLabel { color: #b0b0b0; font-size: 12px; }
+QLabel#SettingsValue { color: #dddddd; font-size: 12px; }
+QLabel#SettingsMono { color: #cccccc; font-size: 12px; font-family: Consolas, monospace; }
+QLabel#SettingsHint { color: #999999; font-size: 11px; }
+QLabel#SettingsDivider { height: 1px; background: #2b2b2b; border: none; }
+QLabel[qzRole="connection"] { background: #888888; border-radius: 4px; }
+QLabel[qzRole="connection"][qzState="connected"] { background: #4ec9b0; }
+QLabel[qzRole="connection"][qzState="disconnected"] { background: #f14c4c; }
+QLabel[qzRole="connection"][qzState="waiting"] { background: #d7ba7d; }
+
+QFrame#ActivityBar { background: #181818; border-right: 1px solid #2b2b2b; }
+QToolButton[qzRole="activity"] {
+    background: transparent; border: none; border-left: 2px solid transparent;
+}
+QToolButton[qzRole="activity"]:hover { background: #2a2a2a; }
+QToolButton[qzRole="activity"]:checked { background: #2a2a2a; border-left-color: #cccccc; }
+QToolButton[qzRole="activity"]:checked:hover { background: #2f2f2f; }
+
+QTreeWidget#PluginTree {
+    background: #252526; color: #cccccc; border: none; outline: 0;
+    selection-background-color: #37373d;
+}
+QTreeWidget#PluginTree::item { padding: 4px 0; }
+QTreeWidget#PluginTree::item:hover { background: #2a2a2a; }
+QTreeWidget#PluginTree::item:selected { background: #37373d; }
+QTreeWidget#PluginTree::branch { background: transparent; }
+QTreeWidget#PluginTree::branch:closed:has-children { image: url("@UI_RESOURCES@/arrow_closed.svg"); }
+QTreeWidget#PluginTree::branch:open:has-children { image: url("@UI_RESOURCES@/arrow_open.svg"); }
+
+QFrame#CanvasSearchOverlay {
+    background: #252526; border: 1px solid #505050; border-radius: 6px;
+}
+QLineEdit#CanvasSearchEdit { background: #1e1e1e; padding: 6px 8px; border-radius: 4px; }
+QListWidget#CanvasSearchResults {
+    background: transparent; color: #dddddd; border: none; outline: 0;
+    selection-background-color: #37373d;
+}
+QListWidget#CanvasSearchResults::item { padding: 4px 8px; }
+QListWidget#CanvasSearchResults::item:selected { background: #37373d; }
+QListWidget#CanvasSearchResults::item:hover { background: #2f2f33; }
+QListWidget#CanvasSearchResults::item:selected:hover { background: #37373d; }
+QLabel#CanvasLockIndicator { background: rgba(40, 40, 40, 160); border-radius: 4px; }
+
+QWidget#LogPanel { background: #181818; }
+QTextEdit#LogView {
+    background: #181818; color: #aaaaaa; border: none;
+    font-family: Consolas, monospace; font-size: 12px;
+    padding: 6px 8px; selection-background-color: #565656; selection-color: #ffffff;
+}

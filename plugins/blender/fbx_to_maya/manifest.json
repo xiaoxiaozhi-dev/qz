@@ -1,0 +1,8 @@
+{
+  "id": "fbx_to_maya",
+  "name": "选中物体发送到 Maya",
+  "dcc": "blender",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": ""
+}

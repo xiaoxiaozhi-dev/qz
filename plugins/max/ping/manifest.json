@@ -1,0 +1,9 @@
+{
+  "id": "ping",
+  "name": "Ping",
+  "dcc": "max",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": "",
+  "category": "settings"
+}

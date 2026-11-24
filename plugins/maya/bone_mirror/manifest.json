@@ -1,0 +1,8 @@
+{
+  "id": "bone_mirror",
+  "name": "骨骼镜像",
+  "dcc": "maya",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": ""
+}

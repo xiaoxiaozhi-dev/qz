@@ -1,0 +1,8 @@
+{
+  "id": "fbx_to_maya",
+  "name": "选中物体发送到Maya",
+  "dcc": "max",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": ""
+}

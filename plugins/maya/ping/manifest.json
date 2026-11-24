@@ -1,0 +1,9 @@
+{
+  "id": "ping",
+  "name": "Ping",
+  "dcc": "maya",
+  "icon": "",
+  "widget_factory": "widget.create_widget",
+  "shortcut": "",
+  "category": "settings"
+}

@@ -1,0 +1,12 @@
+.venv/
+dist/
+build/
+__pycache__/
+temp/
+backups/
+user_plugins/
+data/
+updates/
+.git/
+/memory/
+/.workbuddy/

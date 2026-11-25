@@ -1,8 +1,0 @@
-{
-  "id": "create_box",
-  "name": "创建 Box",
-  "dcc": "max",
-  "icon": "",
-  "widget_factory": "widget.create_widget",
-  "shortcut": ""
-}

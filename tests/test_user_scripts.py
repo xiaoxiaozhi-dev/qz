@@ -568,21 +568,23 @@ class QtTests(Fixture):
         self._main_window_flow('blender')
 
     def _main_window_flow(self, dcc):
-        from PySide6 import QtCore, QtGui, QtTest, QtWidgets
+        import threading
+        from PySide6 import QtCore, QtTest, QtWidgets
         from ui.main_window import MainWindow
-        from ui import layout_state
-        from ui.user_script_dialog import AddScriptDialog
-        from contextlib import ExitStack
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(MainWindow, '_start_bridge_timer'))
-            stack.enter_context(patch.object(MainWindow, '_restore_layout'))
-            stack.enter_context(patch.object(MainWindow, '_restore_window', lambda win: win.resize(1200, 800)))
-            stack.enter_context(patch('ui.main_window.layout_state.save_open'))
-            stack.enter_context(patch('ui.layout_state._default_path', return_value=str(self.folder / 'layout.json')))
+        from ui import layout_state, user_scripts
+
+        extra = self.folder / 'extra_tool.py'
+        extra.write_text('print("manual")', encoding='utf-8')
+        duplicate = self.folder / 'duplicates' / self.script.name
+        duplicate.parent.mkdir()
+        duplicate.write_text('raise AssertionError()', encoding='utf-8')
+        with (patch.object(MainWindow, '_start_bridge_timer'),
+              patch.object(MainWindow, '_restore_window', lambda win: win.resize(1200, 800)),
+              patch('ui.layout_state._default_path', return_value=str(self.folder / 'layout.json'))):
             window = MainWindow()
             try:
                 window.show()
-                window._side.show()
+                window._activity.show_panel(0)
                 self.app.processEvents()
                 tree = window._side._tree
 
@@ -591,127 +593,73 @@ class QtTests(Fixture):
                     return next(group.child(i) for i in range(group.childCount())
                                 if group.child(i).data(0, QtCore.Qt.UserRole) == ('category', dcc, 'user'))
 
-                completed = []
-                def fill_dialog():
-                    dialog = self.app.activeModalWidget()
-                    if not isinstance(dialog, AddScriptDialog):
-                        completed.append('dialog missing')
-                        return
-                    dialog.name_edit.setText('新工具')
-                    dialog.file_edit.setText(str(self.script))
-                    QtTest.QTest.mouseClick(dialog.buttons.button(QtWidgets.QDialogButtonBox.Ok), QtCore.Qt.LeftButton)
-                    completed.append(dialog.result())
-                custom = custom_group()
-                self.assertEqual(custom.text(0), '用户自定义 (0)')
-                custom.setExpanded(True)
-                tree.scrollToItem(custom.child(0))
-                self.app.processEvents()
-                QtCore.QTimer.singleShot(30, fill_dialog)
-                QtCore.QTimer.singleShot(3000, lambda: self.app.activeModalWidget().reject()
-                                         if isinstance(self.app.activeModalWidget(), AddScriptDialog) else None)
-                QtTest.QTest.mouseClick(tree.viewport(), QtCore.Qt.LeftButton,
-                                        pos=tree.visualItemRect(custom.child(0)).center())
-                self.assertEqual(completed, [QtWidgets.QDialog.Accepted])
-                self.assertEqual(custom_group().text(0), '用户自定义 (1)')
-                info = next(info for info in window._all_plugins if info.user_script)
-                self.assertIn(info.key, window._canvas.open_ids())
-                proxy = window._canvas._proxies[info.key]
-                position = proxy.pos()
-                self.assertEqual(proxy.node().title_text, '新工具')
-                self.assertEqual(window._clients[dcc], proxy.node().content().client)
-                QtTest.QTest.keyClick(window._canvas, QtCore.Qt.Key_F, QtCore.Qt.ControlModifier)
-                self.app.processEvents()
-                self.assertIn(info.key, window._canvas._search._by_key)
-                window._canvas._search.hide()
-
-                restarted = MainWindow()
-                self.assertIn(info.key, restarted._plugins_by_key)
-                restarted.close()
-                restarted.deleteLater()
-
-                chosen = []
-                def context_action(label):
+                with patch.object(QtWidgets.QFileDialog, 'getOpenFileNames',
+                                  return_value=([str(self.script), str(extra), str(duplicate)], '')) as picker:
                     item = custom_group().child(0)
                     tree.scrollToItem(item)
                     self.app.processEvents()
-                    point = tree.visualItemRect(item).center()
-                    def select():
-                        menu = self.app.activePopupWidget()
-                        if not isinstance(menu, QtWidgets.QMenu):
-                            chosen.append('menu missing')
-                            return
-                        action = next(action for action in menu.actions() if action.text() == label)
-                        QtTest.QTest.mouseClick(menu, QtCore.Qt.LeftButton, pos=menu.actionGeometry(action).center())
-                        chosen.append(label)
-                    QtCore.QTimer.singleShot(20, select)
-                    QtCore.QTimer.singleShot(3000, lambda: self.app.activePopupWidget().close()
-                                             if isinstance(self.app.activePopupWidget(), QtWidgets.QMenu) else None)
-                    event = QtGui.QContextMenuEvent(QtGui.QContextMenuEvent.Mouse, point,
-                                                   tree.viewport().mapToGlobal(point))
-                    self.app.sendEvent(tree.viewport(), event)
-
-                with patch.object(QtWidgets.QInputDialog, 'getText', return_value=('新的名称', True)):
-                    context_action('改名…')
-                self.assertEqual(proxy.node().title_text, '新的名称')
-                self.assertEqual(proxy.pos(), position)
-                self.assertIs(proxy, window._canvas._proxies[info.key])
-                self.assertEqual(window._canvas._search._by_key[info.key].name, '新的名称')
-                with patch.object(QtWidgets.QInputDialog, 'getText', return_value=('main', True)):
-                    context_action('修改入口…')
-                self.assertEqual(proxy.node().content().script['entry'], 'main')
-                with patch.object(QtGui.QDesktopServices, 'openUrl', return_value=True) as opened:
-                    context_action('打开脚本目录')
-                    self.assertEqual(opened.call_count, 1)
-                layout_state.save_all({'version': 4, 'open_plugins': [
-                    {'dcc': dcc, 'id': info.id, 'x': 12, 'y': 34},
-                    {'dcc': 'max', 'id': 'create_box', 'x': 56, 'y': 78}]})
-                answers = []
-                def remove_with_confirmation(label):
-                    def answer():
-                        box = self.app.activeModalWidget()
-                        if not isinstance(box, QtWidgets.QMessageBox):
-                            answers.append('confirmation missing')
-                            return
-                        answers.append((label, box.defaultButton().text(), box.informativeText()))
-                        button = next(button for button in box.buttons() if button.text() == label)
-                        QtTest.QTest.mouseClick(button, QtCore.Qt.LeftButton)
-                    timer = QtCore.QTimer(window)
-                    timer.setSingleShot(True)
-                    timer.timeout.connect(answer)
-                    timer.start(80)
-                    try:
-                        context_action('移除')
-                    finally:
-                        timer.stop()
-                    self.app.processEvents()
-
-                remove_with_confirmation('取消')
-                self.assertIn(info.key, window._canvas.open_ids())
-                self.assertTrue(Path(info.user_script['folder']).is_dir())
-                self.assertIn(info.key, window._plugins_by_key)
-                self.assertIn(info.key, [key for key, _, _ in layout_state.load_open()[0]])
-                with patch('ui.main_window.user_scripts.remove_script', side_effect=PermissionError('file in use')):
-                    with patch.object(window._log, 'error') as report:
-                        remove_with_confirmation('移除')
-                        report.assert_called_once()
-                self.assertIn(info.key, window._canvas.open_ids())
-                self.assertTrue(Path(info.user_script['folder']).is_dir())
-                remove_with_confirmation('移除')
-                self.assertEqual(chosen, ['改名…', '修改入口…', '打开脚本目录', '移除', '移除', '移除'])
-                self.assertEqual([answer[:2] for answer in answers], [('取消', '取消'), ('移除', '取消'), ('移除', '取消')])
-                self.assertTrue(all(info.user_script['folder'] in answer[2] for answer in answers))
+                    QtTest.QTest.mouseClick(tree.viewport(), QtCore.Qt.LeftButton,
+                                            pos=tree.visualItemRect(item).center())
+                    picker.assert_called_once()
+                self.assertEqual(custom_group().text(0), '用户自定义 (2)')
+                root = user_scripts._root(dcc)
+                self.assertEqual({p.name for p in root.iterdir()}, {self.script.name, extra.name})
+                self.assertEqual((root / self.script.name).read_bytes(), self.script.read_bytes())
+                info = next(p for p in window._all_plugins if p.user_script and p.name == self.script.stem)
                 self.assertNotIn(info.key, window._canvas.open_ids())
-                self.assertNotIn(info.key, window._plugins_by_key)
-                self.assertNotIn(info.key, window._canvas._search._by_key)
-                self.assertFalse(Path(info.user_script['folder']).exists())
+
+                manual = root / 'manual_tool.py'
+                manual.write_text('pass', encoding='utf-8')
+                QtTest.QTest.mouseClick(window._side._refresh_button, QtCore.Qt.LeftButton)
+                self.assertEqual(custom_group().text(0), '用户自定义 (3)')
+                tree._groups[dcc].setExpanded(False)
+                window._side._search.setText(info.name)
+                self.assertTrue(tree._groups[dcc].isExpanded())
+                self.assertEqual(custom_group().childCount(), 1)
+                target = custom_group().child(0)
+                tree.scrollToItem(target)
+                self.app.processEvents()
+
+                window._clients[dcc].connected = True
+                called = threading.Event()
+                release = threading.Event()
+                def execute(client, script):
+                    called.set()
+                    release.wait(2)
+                    return dict(ok=True, data=dict(output='ran'))
+
+                with patch('ui.main_window.user_scripts.run_script', side_effect=execute) as run:
+                    try:
+                        for _ in range(2):
+                            QtTest.QTest.mouseDClick(tree.viewport(), QtCore.Qt.LeftButton,
+                                                    pos=tree.visualItemRect(target).center())
+                        self.assertTrue(called.wait(2))
+                        run.assert_called_once()
+                        self.assertEqual(run.call_args.args[1]['filepath'], str(root / self.script.name))
+                        self.assertNotIn(info.key, window._canvas.open_ids())
+                    finally:
+                        release.set()
+                    for _ in range(100):
+                        if not window._script_tasks:
+                            break
+                        QtTest.QTest.qWait(10)
+                    self.assertFalse(window._script_tasks)
+                    layout_state.save_all({'version': 4, 'open_plugins': [
+                        {'dcc': dcc, 'id': info.id, 'x': 12, 'y': 34}]})
+                    window._restore_layout()
+                    self.assertNotIn(info.key, window._canvas.open_ids())
+                    run.assert_called_once()
+
+                window._side._search.clear()
+                self.assertFalse(tree._groups[dcc].isExpanded())
+                renamed = user_scripts.update_script(info.id, name='新的名称', dcc=dcc)
+                self.assertTrue((root / ('新的名称' + self.script.suffix)).is_file())
+                user_scripts.remove_script(renamed['id'], dcc=dcc)
+                window._side._refresh_button.click()
+                self.assertEqual(custom_group().text(0), '用户自定义 (2)')
                 self.assertTrue(self.script.is_file())
-                self.assertEqual([key for key, _, _ in layout_state.load_open()[0]], [('max', 'create_box')])
-                self.assertNotIn(info.key, [plugin.key for plugin in store.scan_scripts(dcc)[0]])
-                self.assertEqual(custom_group().text(0), '用户自定义 (0)')
             finally:
                 window.close()
-                window.deleteLater()
-                self.app.processEvents()
 
     def test_empty_custom_groups_have_add_entry_and_emit_their_dcc(self):
         from PySide6 import QtCore, QtTest

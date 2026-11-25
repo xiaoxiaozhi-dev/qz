@@ -73,6 +73,7 @@ class SettingsPanel(QtWidgets.QWidget):
     #   在资源树的「设置」组里。
     connection_requested = QtCore.Signal(str)
     update_requested = QtCore.Signal()
+    check_update_requested = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -107,11 +108,18 @@ class SettingsPanel(QtWidgets.QWidget):
         outer.addStretch(1)
 
         scroll.setWidget(inner)
+        self._scroll = scroll
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(scroll)
 
+    def content_width(self) -> int:
+        """Space for the controls and a vertical scrollbar at the current DPI."""
+        self.ensurePolished()
+        inner = self._scroll.widget()
+        scrollbar = self._scroll.verticalScrollBar()
+        return inner.minimumSizeHint().width() + scrollbar.sizeHint().width()
 
     # ── 分区 ────────────────────────────────────
     def _build_bridge(self) -> QtWidgets.QWidget:
@@ -300,6 +308,7 @@ class SettingsPanel(QtWidgets.QWidget):
 
         self._plugin_count = QtWidgets.QLabel("已加载 0 个")
         self._plugin_count.setObjectName("SettingsHint")
+        self._plugin_count.setWordWrap(True)
         lay.addWidget(self._plugin_count)
 
         # ⚠️ 这里原来的两个 Reload 按钮已移除（2026-10-21）——
@@ -333,12 +342,33 @@ class SettingsPanel(QtWidgets.QWidget):
         rl.addStretch(1)
         rl.addWidget(btn)
         lay.addWidget(row)
-        update = _compact_button('从更新包更新…')
-        update.setEnabled(paths.is_frozen())
-        update.setToolTip('选择已下载的 Qz 更新包' if paths.is_frozen() else '发布版支持从更新包更新')
-        update.clicked.connect(lambda checked=False: self.update_requested.emit())
-        lay.addWidget(update)
+        self._check_update = _compact_button('检查更新')
+        self._check_update.clicked.connect(self.check_update_requested.emit)
+        self._offline_update = _compact_button('从更新包更新…')
+        self._offline_update.setToolTip('选择已下载的 Qz 更新包' if paths.is_frozen() else '发布版支持从更新包更新')
+        self._offline_update.clicked.connect(self.update_requested.emit)
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self._check_update, 1)
+        row.addWidget(self._offline_update, 1)
+        lay.addLayout(row)
+        self._update_status = QtWidgets.QLabel()
+        self._update_status.setObjectName('SettingsHint')
+        self._update_status.setWordWrap(True)
+        self._update_status.setTextFormat(QtCore.Qt.PlainText)
+        lay.addWidget(self._update_status)
+        self._update_progress = QtWidgets.QProgressBar()
+        lay.addWidget(self._update_progress)
+        self.set_update_state()
         return box
+
+    def set_update_state(self, text='', *, busy=False, progress=None):
+        for button in (self._check_update, self._offline_update):
+            button.setEnabled(paths.is_frozen() and not busy)
+        self._update_status.setText(text)
+        self._update_status.setVisible(bool(text))
+        self._update_progress.setVisible(progress is not None)
+        if progress is not None:
+            self._update_progress.setValue(progress)
 
     # ── 数据更新 ─────────────────────────────────
     def set_bridge_states(self, states: dict, host: str, ports: dict,

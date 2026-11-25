@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import uuid
 
 from maya_bridge import register_action
 
@@ -17,6 +18,11 @@ def _read_tool(root, script_id):
     root = Path(root).resolve(strict=True)
     matches = []
     for folder in root.iterdir():
+        language = {'.py': 'python', '.mel': 'mel'}.get(folder.suffix.lower())
+        if (language and not folder.name.startswith('.') and not folder.is_symlink()
+                and folder.is_file() and 'user_' + uuid.uuid5(uuid.NAMESPACE_URL, folder.name).hex == script_id):
+            return dict(id=script_id, name=folder.stem, language=language, entry='',
+                        filepath=str(folder), directory=str(root))
         if folder.name.startswith('.') or not folder.is_dir() or folder.is_symlink():
             continue
         try:
@@ -108,7 +114,7 @@ def _save_shelf(shelf):
 @register_action('user_script_shelf')
 def user_script_shelf(op='pin', root=None, script_id=''):
     if op == 'info':
-        return dict(version=1)
+        return dict(version=1, flat_files=True)
     if op != 'pin':
         raise ValueError('未知工具架操作')
     from maya import cmds

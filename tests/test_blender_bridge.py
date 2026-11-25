@@ -132,27 +132,6 @@ class BlenderBridgeTests(unittest.TestCase):
                     bridge.server_close()
                     thread.join(2)
 
-    def test_card_scans_and_reads_selection_on_click(self):
-        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-        plugins = plugin_loader.scan(paths.plugins_dir())
-        info = next(plugin for plugin in plugins if plugin.key == ("blender", "read_selection"))
-        messages = []
-        calls = []
-
-        def call(action, **kwargs):
-            calls.append(action)
-            return {"ok": True, "data": {"count": 1, "names": ["Cube"]}}
-
-        card = info.load_factory()(SimpleNamespace(call=call), SimpleNamespace(info=messages.append))
-        card.show()
-        QtTest.QTest.mouseClick(card.button, QtCore.Qt.LeftButton)
-        wait_until(lambda: messages, lambda: QtTest.QTest.qWait(5))
-        self.assertEqual(calls, ["read_selection"])
-        self.assertIn("Cube", messages[0])
-        self.assertTrue(card.button.isEnabled())
-        card.close()
-        app.processEvents()
-
     def test_settings_cards_call_blender_and_log_results(self):
         app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
         plugins = {p.id: p for p in plugin_loader.scan(paths.plugins_dir()) if p.dcc == "blender"}

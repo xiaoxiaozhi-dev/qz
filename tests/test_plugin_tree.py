@@ -297,7 +297,7 @@ def main():
                   repr(getattr(p, "category", "<无该字段>")))
 
     # 普通插件不该有 category
-    for dcc, pid in (("max", "create_box"), ("maya", "create_box")):
+    for dcc, pid in (("max", "rename_tool"), ("maya", "rename_tool")):
         p = by_key.get((dcc, pid))
         if p:
             check("★ %s/%s 无 category" % (dcc, pid),
@@ -341,7 +341,7 @@ def main():
               tree._user_collapsed)
 
         # refresh 后不能弹回去
-        tree.set_open_keys([("maya", "create_box")])
+        tree.set_open_keys([("maya", "rename_tool")])
         APP.processEvents()
         check("★★ 设置组 refresh 后仍保持折叠",
               not cat.isExpanded(), cat.isExpanded())

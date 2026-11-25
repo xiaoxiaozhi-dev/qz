@@ -166,8 +166,60 @@ def _write(folder, data):
 
 
 def read_script(script_id, require_file=True, *, dcc='maya'):
+    for data in _flat_scripts(dcc):
+        if data['id'] == script_id:
+            return data
     folder = _folder(script_id, dcc)
     return _read_folder(folder, require_file, dcc=dcc)
+
+
+def _flat_scripts(dcc):
+    root = _root(dcc)
+    if not root.is_dir():
+        return
+    languages = {suffix: language for language, suffix in SCRIPT_TYPES[dcc].items()}
+    for path in sorted(root.iterdir()):
+        language = languages.get(path.suffix.lower())
+        if (not language or path.name.startswith('.') or path.is_symlink()
+                or not path.is_file() or path.resolve().parent != root):
+            continue
+        script_id = 'user_' + uuid.uuid5(uuid.NAMESPACE_URL, path.name).hex
+        yield dict(id=script_id, name=path.stem, dcc=dcc, language=language,
+                   filepath=str(path), directory=str(root), folder=str(root),
+                   entry='', flat=True)
+
+
+def _check_flat_name(root, name, dcc, except_path=None):
+    if any(p.stem.casefold() == name.casefold() and p != except_path
+           and p.suffix.lower() in SCRIPT_TYPES[dcc].values() for p in root.iterdir()):
+        raise FileExistsError(f'已有同名脚本：{name}')
+    for folder in _folders(dcc):
+        try:
+            legacy = _read_folder(folder, require_file=False, dcc=dcc)
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if not legacy.get('removed') and legacy['name'].casefold() == name.casefold():
+            raise FileExistsError(f'已有同名脚本：{name}')
+
+
+def add_flat_script(filepath, *, dcc):
+    source = Path(filepath)
+    if (not source.is_file() or source.name.startswith('.')
+            or source.suffix.lower() not in SCRIPT_TYPES[dcc].values()):
+        raise ValueError('请选择当前宿主支持的脚本文件')
+    root = _root(dcc)
+    root.mkdir(parents=True, exist_ok=True)
+    _check_flat_name(root, source.stem, dcc)
+    destination = root / source.name
+    created = False
+    try:
+        with source.open('rb') as original, destination.open('xb') as copy:
+            created = True
+            shutil.copyfileobj(original, copy)
+    except OSError:
+        if created:
+            destination.unlink()
+        raise
 
 
 def _read_folder(folder, require_file=True, *, dcc='maya'):
@@ -215,6 +267,10 @@ def scan_scripts(dcc='maya'):
                                       user_script=data))
         except Exception as exc:
             errors.append(f"用户脚本 {folder.name}：{exc}")
+    for data in _flat_scripts(dcc):
+        plugins.append(PluginInfo(id=data['id'], name=data['name'], dcc=dcc, icon='',
+                                  widget_factory_path='', category='user', _dir=data['directory'],
+                                  user_script=data))
     return [info for info in plugins if info.id not in duplicate_ids], errors
 
 
@@ -312,6 +368,18 @@ def add_code(name, code, entry='', language='python', *, dcc='maya'):
 
 def update_script(script_id, *, name=None, entry=None, removed=None, dcc='maya'):
     data = read_script(script_id, require_file=False, dcc=dcc)
+    if data.get('flat'):
+        if entry is not None or removed is not None or name is None:
+            raise ValueError('独立脚本仅支持修改文件名')
+        name = validate_name(name)
+        if name.startswith('.') or name.endswith('.') or re.search(r'[<>:"/\\|?*]', name):
+            raise ValueError('脚本文件名无效')
+        source = Path(data['filepath'])
+        destination = source.with_name(name + source.suffix)
+        _check_flat_name(source.parent, name, dcc, except_path=source)
+        if source.name != destination.name:
+            source.rename(destination)
+        return next(item for item in _flat_scripts(dcc) if Path(item['filepath']) == destination)
     if name is not None:
         data['name'] = validate_name(name)
     if entry is not None:
@@ -327,6 +395,11 @@ def update_script(script_id, *, name=None, entry=None, removed=None, dcc='maya')
 def remove_script(script_id, *, dcc='maya'):
     """Permanently remove only this tool's managed directory, never its source."""
     data = read_script(script_id, require_file=False, dcc=dcc)
+    if data.get('flat'):
+        target = Path(data['filepath'])
+        _make_writable(target)
+        target.unlink()
+        return
     folder = Path(data['folder'])
     root = _root(dcc)
     # Verify the final absolute deletion target before any recursive removal.
@@ -372,14 +445,19 @@ def run_script(client, script):
         ready = client.call(action, op='info', timeout=15, connect_timeout=1)
         if not ready.get('ok') and 'unknown action' not in ready.get('error', ''):
             return ready
-        if not ready.get('ok') or ready.get('data', {}).get('version') != 1:
+        def supported(response):
+            data = response.get('data') or {}
+            return (response.get('ok') and data.get('version') == 1
+                    and (dcc != 'blender' or not script.get('flat') or data.get('flat_files')))
+
+        if not supported(ready):
             reloaded = client.call('reload_actions', timeout=30, connect_timeout=1)
             if not reloaded.get('ok'):
                 if dcc == 'blender' and 'unknown action' in reloaded.get('error', ''):
                     raise RuntimeError(LEGACY_BRIDGE_MESSAGE)
                 return reloaded
             ready = client.call(action, op='info', timeout=15, connect_timeout=1)
-        if not ready.get('ok') or ready.get('data', {}).get('version') != 1:
+        if not supported(ready):
             raise RuntimeError("%s 用户脚本执行器未加载，请重载该软件动作库" % label)
         current = read_script(script['id'], dcc=dcc)
         if current.get('removed'):
@@ -399,6 +477,12 @@ def run_script(client, script):
         return dict(ok=False, error=error)
 
 
+def _pin_ready(response, version, script):
+    data = response.get('data') or {}
+    return (response.get('ok') and data.get('version') == version
+            and (not script.get('flat') or data.get('flat_files')))
+
+
 def pin_script_to_maya_shelf(client, script):
     """Only install a persistent launcher; never execute the user's script."""
     try:
@@ -410,12 +494,12 @@ def pin_script_to_maya_shelf(client, script):
         ready = client.call('user_script_shelf', op='info', timeout=15, connect_timeout=1)
         if not ready.get('ok') and 'unknown action' not in ready.get('error', ''):
             return ready
-        if not ready.get('ok') or ready.get('data', {}).get('version') != 1:
+        if not _pin_ready(ready, 1, current):
             reloaded = client.call('reload_actions', timeout=30, connect_timeout=1)
             if not reloaded.get('ok'):
                 return reloaded
             ready = client.call('user_script_shelf', op='info', timeout=15, connect_timeout=1)
-        if not ready.get('ok') or ready.get('data', {}).get('version') != 1:
+        if not _pin_ready(ready, 1, current):
             raise RuntimeError('Maya 工具架执行器未加载，请重载 Maya 动作库')
         return client.call('user_script_shelf', op='pin', script_id=current['id'],
                            root=str(_root('maya')), timeout=30, connect_timeout=1)
@@ -434,12 +518,12 @@ def pin_script_to_max_toolbar(client, script):
         ready = client.call('user_script_toolbar', op='info', timeout=15, connect_timeout=1)
         if not ready.get('ok') and 'unknown action' not in ready.get('error', ''):
             return ready
-        if not ready.get('ok') or ready.get('data', {}).get('version') != 2:
+        if not _pin_ready(ready, 2, current):
             reloaded = client.call('reload_actions', timeout=30, connect_timeout=1)
             if not reloaded.get('ok'):
                 return reloaded
             ready = client.call('user_script_toolbar', op='info', timeout=15, connect_timeout=1)
-        if not ready.get('ok') or ready.get('data', {}).get('version') != 2:
+        if not _pin_ready(ready, 2, current):
             raise RuntimeError('Max 工具栏执行器未加载，请重载 Max 动作库')
         return client.call('user_script_toolbar', op='pin', script_id=current['id'],
                            root=str(_root('max')), timeout=35, connect_timeout=1, execution_timeout=30)

@@ -33,11 +33,12 @@ from .connection_health import ConnectionHealth
 from .app_style import apply_application_style
 from .window_topmost import set_window_topmost
 from . import user_scripts
-from maintenance import configuration
+from maintenance import configuration, online_update
 from maintenance.version import read_version
 
 
-APP_TITLE = "Qz Tools v" + read_version()['version']
+VERSION = read_version()['version']
+APP_TITLE = "Qz Tools v" + VERSION
 
 
 class _ShelfSignals(QtCore.QObject):
@@ -55,6 +56,34 @@ class _ShelfTask(QtCore.QRunnable):
                else user_scripts.pin_script_to_maya_shelf)
         self.signals.finished.emit(self.key, pin(self.client, self.script))
 
+
+class _ScriptTask(_ShelfTask):
+    def run(self):
+        self.signals.finished.emit(self.key, user_scripts.run_script(self.client, self.script))
+
+
+class _UpdateSignals(QtCore.QObject):
+    finished = QtCore.Signal(str, object, str)
+    progress = QtCore.Signal(int)
+
+
+class _UpdateTask(QtCore.QRunnable):
+    def __init__(self, phase, value):
+        super().__init__()
+        self.phase, self.value = phase, value
+        self.signals = _UpdateSignals()
+
+    def run(self):
+        try:
+            if self.phase == 'check':
+                result = online_update.check_latest(self.value)
+            else:
+                result = online_update.download_update(
+                    self.value, paths.local_data_dir('updates'), self.signals.progress.emit)
+        except Exception as error:
+            self.signals.finished.emit(self.phase, None, str(error))
+        else:
+            self.signals.finished.emit(self.phase, result, '')
 
 # ── 配置 ─────────────────────────────────────────
 # ⚠️ 配置用 JSON 不用 YAML（2026-10-19）
@@ -184,6 +213,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._closing = False            # 关闭过程中忽略异步回调
         self._always_on_top = False
         self._shelf_tasks = {}
+        self._script_tasks = {}
+        self._update_task = None
         # 专注模式（Ctrl+空格）状态。★ **不持久化**：
         # 这是临时状态，开机就进专注模式会让人看不到资源树。
         self._focus_mode = False
@@ -260,10 +291,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._side.set_plugins(self._all_plugins)
         self._side._tree.set_collapsed_groups(layout_state.load_collapsed_groups())
         self._side.plugin_activated.connect(self._on_plugin_activated)
+        self._side.refresh_requested.connect(self._refresh_plugins)
         # 设置面板：日志上限即时生效
         self._side.settings.log_limit_changed.connect(self._on_log_limit_changed)
         self._side.settings.connection_requested.connect(self._on_connection_clicked)
         self._side.settings.update_requested.connect(self._on_update_requested)
+        self._side.settings.check_update_requested.connect(self._on_check_update)
         # ⚠️ Reload 的两个 signal 连接已移除（2026-10-21）——
         #   Reload 现在是画布插件卡片，自己调 client，不需要中台转发。
         self._side.settings.set_log_limit(layout_state.load_log_limit())
@@ -282,6 +315,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return self._make_widget(info)
         self._canvas = Canvas(factory=_factory)
         self._canvas.set_all_plugins(self._all_plugins)
+        self._canvas.user_script_activated.connect(self._on_plugin_activated)
         self._side._tree.add_script_requested.connect(self._add_user_script)
         self._side._tree.manage_script_requested.connect(self._manage_user_script)
         self._side._tree.manage_plugin_requested.connect(self._manage_plugin)
@@ -523,45 +557,112 @@ class MainWindow(QtWidgets.QMainWindow):
         for error in errors:
             self._log.error(error)
 
-    def _on_update_requested(self):
-        if not paths.is_frozen():
-            return
-        if self._shelf_tasks or any(
+    def _can_update(self):
+        if self._shelf_tasks or self._script_tasks or any(
             getattr(proxy.node().content(), '_task', None) is not None
             or getattr(proxy.node().content(), '_busy', False)
             for proxy in self._canvas._proxies.values()
         ):
             self._log.warn('有工具正在执行，请完成后再更新中台。')
+            return False
+        return True
+
+    def _on_check_update(self):
+        if not paths.is_frozen() or self._update_task is not None or self._closing:
+            return
+        self._side.settings.set_update_state('正在检查 GitHub 发行版…', busy=True)
+        self._start_update_task('check', VERSION)
+
+    def _start_update_task(self, phase, value):
+        task = self._update_task = _UpdateTask(phase, value)
+        task.signals.finished.connect(self._on_online_update_result, QtCore.Qt.QueuedConnection)
+        task.signals.progress.connect(self._on_update_progress, QtCore.Qt.QueuedConnection)
+        QtCore.QThreadPool.globalInstance().start(task)
+
+    @QtCore.Slot(int)
+    def _on_update_progress(self, percent):
+        if not self._closing and self._update_task is not None:
+            text = '正在校验更新包…' if percent == 100 else '正在下载更新包…'
+            self._side.settings.set_update_state(text, busy=True, progress=percent)
+
+    @QtCore.Slot(str, object, str)
+    def _on_online_update_result(self, phase, value, error):
+        self._update_task = None
+        if self._closing:
+            return
+        settings = self._side.settings
+        if error:
+            settings.set_update_state('更新失败，可尝试从本地更新包更新。')
+            self._log.error('在线更新失败：' + error)
+        elif phase == 'check':
+            if value is None:
+                settings.set_update_state('当前已是最新版本。')
+                return
+            settings.set_update_state(f'发现新版本 v{value.version}。')
+            box = QtWidgets.QMessageBox(self)
+            box.setWindowTitle('检查更新')
+            box.setTextFormat(QtCore.Qt.PlainText)
+            box.setText(f'发现新版本 v{value.version}（{value.size / 1024**2:.1f} MB）')
+            box.setInformativeText('下载并校验后，中台将退出并自动安装更新。')
+            if value.notes:
+                box.setDetailedText(value.notes)
+            download = box.addButton('下载并更新', QtWidgets.QMessageBox.AcceptRole)
+            cancel = box.addButton('取消', QtWidgets.QMessageBox.RejectRole)
+            box.setDefaultButton(cancel)
+            box.setEscapeButton(cancel)
+            box.exec()
+            if box.clickedButton() is download and self._can_update():
+                settings.set_update_state('正在下载更新包…', busy=True, progress=0)
+                self._start_update_task('download', value)
+        elif self._can_update():
+            try:
+                self._launch_update(value)
+            except Exception as exc:
+                settings.set_update_state('更新包已下载，无法启动更新助手。')
+                self._log.error(f'无法开始更新：{exc}。更新包：{value}')
+        else:
+            settings.set_update_state('更新包已下载，可稍后从本地更新。')
+            self._log.info('已验证更新包：' + value)
+
+    def _launch_update(self, package):
+        from maintenance.client import start_update
+        start_update(paths.project_dir(), package, wait_pid=os.getpid())
+        self.close()
+
+    def _on_update_requested(self):
+        if not paths.is_frozen() or self._update_task is not None or not self._can_update():
             return
         package, _ = QtWidgets.QFileDialog.getOpenFileName(self, '选择 Qz 更新包', '', 'Qz 更新包 (*.zip)')
         if not package:
             return
         try:
             from maintenance.release import inspect_package
-            from maintenance.client import start_update
             info = inspect_package(package)
             answer = QtWidgets.QMessageBox.question(self, '更新中台',
                 '将安装版本 %s。中台会保存设置并退出，更新完成后自动打开。\n是否继续？' % info['version'],
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)
             if answer != QtWidgets.QMessageBox.Yes:
                 return
-            start_update(paths.project_dir(), package, wait_pid=os.getpid())
-            self.close()
+            self._launch_update(package)
         except Exception as error:
             self._log.error('无法开始更新：' + str(error))
 
     @QtCore.Slot(str)
     def _add_user_script(self, dcc='maya'):
-        from .user_script_dialog import AddScriptDialog
-        dialog = AddScriptDialog(self, dcc=dcc)
-        if dialog.exec() != QtWidgets.QDialog.Accepted:
+        extensions = ' '.join('*' + ext for ext in user_scripts.SCRIPT_TYPES[dcc].values())
+        files, _ = QtWidgets.QFileDialog.getOpenFileNames(
+            self, '添加脚本', '', f'{dcc_label(dcc)} 脚本 ({extensions})')
+        if not files:
             return
+        for filepath in files:
+            try:
+                user_scripts.add_flat_script(filepath, dcc=dcc)
+                self._log.info(f'[用户自定义] 已添加 {os.path.basename(filepath)}。')
+            except FileExistsError as exc:
+                self._log.warn(f'[用户自定义] 跳过：{exc}')
+            except (OSError, ValueError) as exc:
+                self._log.error(f'[用户自定义] {os.path.basename(filepath)}：{exc}')
         self._refresh_plugins()
-        key = (dcc, dialog.script['id'])
-        info = self._plugins_by_key.get(key)
-        if info is not None:
-            self._canvas.open_plugin(info)
-            self._log.info(f"[用户自定义] 已添加 {info.name}，点击卡片运行脚本。")
 
     @QtCore.Slot(str, object)
     def _manage_plugin(self, operation, info):
@@ -580,8 +681,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not info.user_script:
             return
         try:
-            content = self._canvas.plugin_content(info.key)
-            if operation != 'open' and (info.key in self._shelf_tasks or (content is not None and content._task is not None)):
+            if operation != 'open' and (info.key in self._shelf_tasks or info.key in self._script_tasks):
                 self._log.warn('[用户自定义] 脚本正在执行或固定按钮，请完成后再修改或移除。')
                 return
             if operation in ('pin_shelf', 'pin_toolbar'):
@@ -614,8 +714,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 confirmation.setIcon(QtWidgets.QMessageBox.Warning)
                 confirmation.setTextFormat(QtCore.Qt.PlainText)
                 confirmation.setText(f'确定完整移除“{current["name"]}”？')
-                confirmation.setInformativeText('将永久删除中台保存的脚本、资源和插件登记，并关闭卡片。'
-                    '\n导入前的原始文件不会删除。\n\n工具目录：' + current['folder'])
+                if current.get('flat'):
+                    details = '将永久删除此脚本文件：\n' + current['filepath']
+                else:
+                    details = '将永久删除中台保存的脚本、资源和插件登记。\n\n工具目录：' + current['folder']
+                confirmation.setInformativeText(details + '\n导入前的原始文件不会删除。')
                 remove_button = confirmation.addButton('移除', QtWidgets.QMessageBox.DestructiveRole)
                 cancel_button = confirmation.addButton('取消', QtWidgets.QMessageBox.RejectRole)
                 confirmation.setDefaultButton(cancel_button)
@@ -624,7 +727,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 if confirmation.clickedButton() != remove_button:
                     return
                 user_scripts.remove_script(info.id, dcc=info.dcc)
-                self._canvas.close_plugin(info.key)
                 layout_state.forget_plugin(info.key)
             else:
                 return
@@ -743,7 +845,35 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ── 插件从树/搜索被激活 ─────────────────
     def _on_plugin_activated(self, info):
-        self._canvas.open_plugin(info)
+        if info.user_script is None:
+            self._canvas.open_plugin(info)
+            return
+        if info.key in self._script_tasks or self._closing:
+            return
+        client = self._clients[info.dcc]
+        if not client.connected:
+            self._log.warn(f'[{info.name}] {dcc_label(info.dcc)} 未连接，请先在中台连接。')
+            return
+        task = _ScriptTask(client, info)
+        self._script_tasks[info.key] = task
+        task.signals.finished.connect(self._on_script_finished, QtCore.Qt.QueuedConnection)
+        QtCore.QThreadPool.globalInstance().start(task)
+
+    @QtCore.Slot(object, object)
+    def _on_script_finished(self, key, result):
+        task = self._script_tasks.pop(key, None)
+        if self._closing or task is None:
+            return
+        prefix = f"[{task.script['name']}] "
+        data = result.get('data') or {}
+        for line in data.get('output', '').splitlines():
+            self._log.info(prefix + line)
+        if data.get('truncated'):
+            self._log.info(prefix + '脚本输出较长，日志已截取前 32 KB。')
+        if result.get('ok'):
+            self._log.info(prefix + f"执行完成，耗时 {data.get('elapsed_seconds', 0):.3f} 秒。")
+        else:
+            self._log.error(prefix + result.get('error', '脚本执行失败'))
 
     # ── 节点事件 ───────────────────────────
     def _plugin_label(self, key) -> str:
@@ -882,7 +1012,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # ★ 按复合键 (dcc, id) 还原 ——
             #   maya 的 create_box 和 max 的 create_box 各自还原到自己的位置
             info = self._plugins_by_key.get(key)
-            if info:
+            if info and info.user_script is None:
                 self._canvas.open_plugin(info, x=int(x), y=int(y))
         self._refresh_side()
         view = layout_state.load_canvas_view()

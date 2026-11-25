@@ -1,8 +1,0 @@
-{
-  "id": "read_selection",
-  "name": "读取选择",
-  "dcc": "blender",
-  "icon": "",
-  "widget_factory": "widget.create_widget",
-  "shortcut": ""
-}

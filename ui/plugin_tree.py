@@ -61,6 +61,7 @@ class PluginTree(QtWidgets.QTreeWidget):
         # ::branch 必须显式指定SVG，否则Qt会隐藏箭头；规则在style.qss。
         self._plugins_by_key: Dict[tuple, PluginInfo] = {}
         self._open_keys: set = set()
+        self._filter = ""
         # 用户主动折叠过的 DCC 分支（2026-10-19）。集合里 = 保持折叠。
         self._user_collapsed: set = set()
         # ★ refresh 期间的哨兵：_refresh_groups 里自己调setExpanded 也会触发
@@ -80,7 +81,7 @@ class PluginTree(QtWidgets.QTreeWidget):
         theme.theme.changed.connect(self._on_theme_changed)
 
     def _on_item_expanded(self, item):
-        if self._in_refresh:
+        if self._in_refresh or self._filter:
             return
         key = self._item_collapse_key(item)
         if key:
@@ -92,7 +93,7 @@ class PluginTree(QtWidgets.QTreeWidget):
             self.add_script_requested.emit(data[1])
 
     def _on_item_collapsed(self, item):
-        if self._in_refresh:
+        if self._in_refresh or self._filter:
             return
         key = self._item_collapse_key(item)
         if key:
@@ -171,6 +172,10 @@ class PluginTree(QtWidgets.QTreeWidget):
         self._open_keys = set(open_keys)
         self._refresh_groups()
 
+    def set_filter(self, text):
+        self._filter = text.strip().casefold()
+        self._refresh_groups()
+
     def collapsed_groups(self):
         """Stable DCC/category keys, including child choices under a closed parent."""
         return [list(key) for key in sorted(self._user_collapsed)]
@@ -198,6 +203,12 @@ class PluginTree(QtWidgets.QTreeWidget):
             group.takeChildren()
             plugins = [p for p in self._plugins_by_key.values()
                        if p.dcc == dcc]
+            if self._filter:
+                terms = self._filter.split()
+                plugins = [p for p in plugins if all(term in
+                           f"{DCC_LABELS.get(dcc, dcc)} {dcc} {p.name} {p.id}".casefold()
+                           for term in terms)]
+            group.setHidden(bool(self._filter and not plugins))
             # sort by name
             plugins.sort(key=lambda x: x.name)
 
@@ -211,7 +222,8 @@ class PluginTree(QtWidgets.QTreeWidget):
                 if cat:
                     grouped.setdefault(cat, []).append(p)
 
-            grouped.setdefault('user', [])
+            if not self._filter:
+                grouped.setdefault('user', [])
 
             for p in plain:
                 group.addChild(self._make_plugin_item(p))
@@ -228,14 +240,14 @@ class PluginTree(QtWidgets.QTreeWidget):
                 sub.setForeground(0, QtGui.QBrush(QtGui.QColor("#bbbbbb")))
                 for p in items:
                     sub.addChild(self._make_plugin_item(p))
-                if cat == 'user':
+                if cat == 'user' and not self._filter:
                     add = QtWidgets.QTreeWidgetItem(['添加脚本…'])
                     add.setData(0, QtCore.Qt.UserRole, ('user_add', dcc))
                     sub.addChild(add)
                 group.addChild(sub)
                 # 子组的折叠状态也尊重用户的选择
                 key = ("cat", dcc, cat)
-                sub.setExpanded(key not in self._user_collapsed)
+                sub.setExpanded(bool(self._filter) or key not in self._user_collapsed)
 
             # 计数：DCC 的计数是**全部**插件数（含子组里的）
             group.setText(0, f"{DCC_LABELS.get(dcc, dcc)} ({len(plugins)})")
@@ -248,7 +260,7 @@ class PluginTree(QtWidgets.QTreeWidget):
             if not plugins:
                 group.setExpanded(False)
             else:
-                group.setExpanded(("dcc", dcc) not in self._user_collapsed)
+                group.setExpanded(bool(self._filter) or ("dcc", dcc) not in self._user_collapsed)
 
     def _make_plugin_item(self, p: PluginInfo):
         """造一个插件 item（带 DCC 图标、已开标记与 tooltip）。"""
@@ -311,5 +323,7 @@ class PluginTree(QtWidgets.QTreeWidget):
                     lambda checked=False: self.manage_script_requested.emit('pin_toolbar', plugin))
             for label, operation in [('改名…', 'rename'), ('修改入口…', 'entry'),
                                      ('打开脚本目录', 'open'), ('移除', 'remove')]:
+                if operation == 'entry' and plugin.user_script.get('flat'):
+                    continue
                 menu.addAction(label, lambda checked=False, op=operation: self.manage_script_requested.emit(op, plugin))
         menu.exec(event.globalPos())

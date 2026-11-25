@@ -60,7 +60,7 @@ py -3.11 -m venv .venv
 - 同目录的 SHA256 文件和 `latest.json`：发布信息。
 - `build/logs/`、`build/reports/release.json`：构建日志与来源记录。
 
-`QzTools.exe` 保持 onedir；`QzUpdater.exe` 是不依赖中台运行库的独立助手。设置页“从更新包更新…”在发布版启用；也可关闭中台后双击更新助手。更新只替换官方清单文件，保留 data/、user_plugins/、temp/、backups/。暂未接在线发布站点或自动下载。
+`QzTools.exe` 保持 onedir；`QzUpdater.exe` 是不依赖中台运行库的独立助手。发布版可在设置页手动「检查更新」，从 GitHub Releases 下载正式版，也可用「从更新包更新…」选择本地 ZIP。更新只替换官方清单文件，保留 data/、user_plugins/、temp/、backups/。
 
 官方插件只提供“打开插件位置”；用户自定义插件继续支持改名、删除与固定到宿主工具栏。当前插件业务仍有部分打包在中台内，首版统一更新、重启中台，不宣称插件界面热更新。
 

@@ -68,7 +68,7 @@ def run():
     print('Testing failed new-plugin selftest and rollback', flush=True)
     bad = work / 'bad-release'
     shutil.copytree(published, bad)
-    broken = bad / 'plugins' / 'maya' / 'create_box' / 'widget.py'
+    broken = bad / 'plugins' / 'maya' / 'rename_tool' / 'widget.py'
     broken.write_text('def broken(:\n', encoding='utf-8')
     create_manifest(bad)
     bad_package = work / 'invalid-plugin.zip'

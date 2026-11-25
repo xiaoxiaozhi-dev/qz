@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import tempfile
+import uuid
 
 from max_bridge.server import register_action
 from max_actions.user_scripts import _path, _text, string_types
@@ -30,6 +31,14 @@ def _read_tool(root, script_id):
     if os.path.isdir(root):
         for name in os.listdir(root):
             folder = os.path.join(root, name)
+            stem, suffix = os.path.splitext(name)
+            language = {'.py': 'python', '.ms': 'maxscript'}.get(suffix.lower())
+            if (language and not name.startswith('.') and not os.path.islink(folder)
+                    and os.path.isfile(folder)
+                    and 'user_' + uuid.uuid5(uuid.NAMESPACE_URL, name.encode('utf-8')
+                                            if sys.version_info[0] < 3 else name).hex == script_id):
+                return dict(id=script_id, name=stem, language=language, entry='',
+                            filepath=folder, directory=root)
             if name.startswith('.') or not os.path.isdir(folder) or os.path.islink(folder):
                 continue
             if os.path.dirname(os.path.realpath(folder)) != root:
@@ -328,7 +337,7 @@ def restore_toolbar(config):
 @register_action('user_script_toolbar')
 def user_script_toolbar(op='pin', root=None, script_id=''):
     if op == 'info':
-        return dict(version=2)
+        return dict(version=2, flat_files=True)
     if op != 'pin':
         raise ValueError('未知工具栏操作')
     tool = _read_tool(root, script_id)

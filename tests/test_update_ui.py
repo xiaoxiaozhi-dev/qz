@@ -44,6 +44,36 @@ class UpdateUiTests(unittest.TestCase):
             self.window._on_update_requested()
             start.assert_not_called()
 
+    def test_online_check_runs_on_worker_and_reports_current_version(self):
+        import threading
+        from PySide6 import QtTest
+        caller = threading.get_ident()
+        threads = []
+        def check(version):
+            threads.append(threading.get_ident())
+            return None
+        with patch('paths.is_frozen', return_value=True), patch('maintenance.online_update.check_latest', side_effect=check):
+            self.window._on_check_update()
+            for _ in range(200):
+                if self.window._update_task is None:
+                    break
+                QtTest.QTest.qWait(10)
+            self.assertEqual(len(threads), 1)
+            self.assertNotEqual(threads[0], caller)
+            self.assertIsNone(self.window._update_task)
+            self.assertEqual(self.window._side.settings._update_status.text(), '当前已是最新版本。')
+
+    def test_download_completion_checks_busy_tools_again(self):
+        with patch.object(self.window, '_launch_update') as launch:
+            self.window._script_tasks[('maya', 'user_test')] = object()
+            try:
+                self.window._on_online_update_result('download', 'update.zip', '')
+                launch.assert_not_called()
+            finally:
+                self.window._script_tasks.clear()
+            self.window._on_online_update_result('download', 'update.zip', '')
+            launch.assert_called_once_with('update.zip')
+
     def test_busy_tool_blocks_package_selection(self):
         from PySide6 import QtWidgets
         self.window._shelf_tasks[('max', 'test')] = object()

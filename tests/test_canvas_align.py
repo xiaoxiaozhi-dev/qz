@@ -341,12 +341,14 @@ def main():
     check("★ 展开状态下 refresh 不受影响",
           groups["maya"].isExpanded())
 
-    # ────────────────────────────────6. 侧栏无搜索
+    # ────────────────────────────────6. 资源页内搜索
     print("\n6. 侧栏结构")
     from ui.side_panel import SidePanel
     sp = SidePanel()
     check("★ 侧栏只剩 2 个 tab", sp._stack.count() == 2, sp._stack.count())
-    check("★ 无搜索面板残留", not hasattr(sp, "_search"))
+    check("★ 搜索和刷新属于资源页",
+          sp._stack.widget(0).isAncestorOf(sp._search)
+          and sp._stack.widget(0).isAncestorOf(sp._refresh_button))
     import ui.activity_bar as ab
     bar = ab.ActivityBar()
     check("★ ActivityBar 只剩 2 个图标",

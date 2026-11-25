@@ -49,3 +49,9 @@ Maya/Max 动作可以通过现有动作库重载更新；桥接核心或协议�
 ## 构建依据
 
 采用 [PyInstaller 官方构建参数](https://pyinstaller.org/en/stable/usage.html)：主程序 onedir、助手 onefile、specpath/workpath/distpath 独立。助手单独运行可避免在替换中台时锁住其依赖。
+
+## 从 GitHub 检查更新
+
+在发布版设置页点击「检查更新」。发现更高的正式版本时，可查看说明并选择「下载并更新」。中台在后台下载、检查大小、SHA256 和包内版本，然后交给现有更新助手安装并重启。网络失败时仍可通过「从更新包更新…」使用本地 ZIP。
+
+发布时使用 `v<版本>` 标签，并在同一 GitHub Release 上传构建生成的 `QzTools-<版本>-windows-x64.zip` 和同名 `.zip.sha256`。当前在线更新不需要上传 `latest.json`，也不需要用户登录 GitHub。尚无「检查更新」的旧版本需先手动更新一次。

@@ -40,14 +40,14 @@ check("标题", w.windowTitle().startswith("Qz Tools"), w.windowTitle())
 # ⚠️ maya 侧 2026-10-21 补上了 ping / reload 两张卡片
 #   （原先只有 max 侧有，这次同步过去了）
 # 2026-11-02 加了 rename_tool（批量重命名卡片）
-check("扫到 maya 插件", maya == ["auto_setup", "bone_mirror", "create_box",
+check("扫到 maya 插件", maya == ["auto_setup",
                                 "fbx_to_blender", "fbx_to_max", "js_anim_tools",
                                 "ping", "reload", "rename_tool", "skin_weights"], maya)
-check("扫到 max 插件", mx == ["auto_setup", "create_box", "fbx_to_maya",
+check("扫到 max 插件", mx == ["auto_setup", "fbx_to_maya",
                               "ping", "reload", "rename_tool", "rigging_toolbox",
                               "skin_weights", "vertex_color"], mx)
 check("扫到 Blender 插件", {p.id for p in w._all_plugins if p.dcc == "blender"}
-      == {"auto_setup", "fbx_to_maya", "read_selection", "ping", "reload", "rename_tool", "skin_weights"})
+      == {"auto_setup", "fbx_to_maya", "ping", "reload", "rename_tool", "skin_weights"})
 check("复合键无歧义", len({p.key for p in w._all_plugins}) == len(w._all_plugins))
 
 # 2 activity 切换
@@ -82,33 +82,33 @@ labels = [tree.topLevelItem(i).text(0) for i in range(top)]
 check("树有三个平级分支", len(labels) == 3, labels)
 check("maya 分支", any("maya" in s.lower() for s in labels), labels)
 check("max 分支", any("max" in s.lower() for s in labels), labels)
-check("Blender 分支", "Blender (7)" in labels, labels)
+check("Blender 分支", "Blender (6)" in labels, labels)
 
 # 5 同名插件可同时打开（核心验证）
-box_maya = next(p for p in w._all_plugins if p.key == ("maya", "create_box"))
-box_max = next(p for p in w._all_plugins if p.key == ("max", "create_box"))
-w._canvas.open_plugin(box_maya, 0, 0)
-w._canvas.open_plugin(box_max, 400, 0)
+rename_maya = next(p for p in w._all_plugins if p.key == ("maya", "rename_tool"))
+rename_max = next(p for p in w._all_plugins if p.key == ("max", "rename_tool"))
+w._canvas.open_plugin(rename_maya, 0, 0)
+w._canvas.open_plugin(rename_max, 400, 0)
 check("同名插件共存", len(w._canvas._proxies) == 2, list(w._canvas._proxies.keys()))
-p_maya = w._canvas._proxies[("maya", "create_box")]
-p_max = w._canvas._proxies[("max", "create_box")]
+p_maya = w._canvas._proxies[("maya", "rename_tool")]
+p_max = w._canvas._proxies[("max", "rename_tool")]
 check("两个 client 分别注入",
       p_maya.widget().content()._qz_dcc == "maya"
       and p_max.widget().content()._qz_dcc == "max",
       (getattr(p_maya.widget().content(), "_qz_dcc", "?"),
        getattr(p_max.widget().content(), "_qz_dcc", "?")))
 check("node 存的复合键",
-      p_maya.widget().plugin_id() == ("maya", "create_box")
-      and p_max.widget().plugin_id() == ("max", "create_box"),
+      p_maya.widget().plugin_id() == ("maya", "rename_tool")
+      and p_max.widget().plugin_id() == ("max", "rename_tool"),
       (p_maya.widget().plugin_id(), p_max.widget().plugin_id()))
 # 同一插件重复打开 = 聚焦，不新增
-w._canvas.open_plugin(box_maya, 0, 0)
+w._canvas.open_plugin(rename_maya, 0, 0)
 check("重复打开不新增节点", len(w._canvas._proxies) == 2)
 
 # 6 关闭只关一个
-w._canvas.close_plugin(("max", "create_box"))
+w._canvas.close_plugin(("max", "rename_tool"))
 check("关闭 max 不影响 maya", len(w._canvas._proxies) == 1
-      and ("maya", "create_box") in w._canvas._proxies)
+      and ("maya", "rename_tool") in w._canvas._proxies)
 
 # 7 全量打开 + 锁定 + fit
 for i, info in enumerate(w._all_plugins):

@@ -64,7 +64,6 @@ from .canvas_search import SearchOverlay
 
 
 DEFAULT_OPEN_OFFSET = (200, 200)
-OPEN_STEP = 60            # 新开节点的叠放偏移（原来 30，节点宽 320 看着几乎重叠）
 
 # 视为"正在打字"的控件类型。
 #
@@ -310,6 +309,7 @@ class Canvas(QtWidgets.QGraphicsView):
     #   setData/setProperty 都没问题，只有 Signal 的类型声明会卡）
     node_opened   = QtCore.Signal(object)     # (dcc, id)
     node_removed  = QtCore.Signal(object)     # (dcc, id)
+    user_script_activated = QtCore.Signal(object)
     node_moved    = QtCore.Signal(object, float, float)   # (dcc, id), x, y
 
     def __init__(self, factory, parent=None):
@@ -512,7 +512,10 @@ class Canvas(QtWidgets.QGraphicsView):
 
     def _on_search_chosen(self, info):
         self._hide_search()
-        self.open_plugin(info)
+        if info.user_script is not None:
+            self.user_script_activated.emit(info)
+        else:
+            self.open_plugin(info)
 
     def is_locked(self) -> bool:
         return self._locked
@@ -615,6 +618,8 @@ class Canvas(QtWidgets.QGraphicsView):
         节点用 (dcc, id) 复合键索引，所以同名插件在两个 DCC 下
         是两个独立节点，可以同时存在。
         """
+        if info.user_script is not None:
+            return
         key = info.key
         if key in self._proxies:
             proxy = self._proxies[key]
@@ -638,15 +643,12 @@ class Canvas(QtWidgets.QGraphicsView):
         # 新开的节点在已有节点之上
         self._bump_z(proxy)
 
-        # 中央算法：viewport 中心 → scene 坐标
+        # Center on what the user currently sees, regardless of pan, zoom or card count.
         if x is None and y is None:
-            vp = self.viewport().rect()
-            center = self.mapToScene(vp.center())
-            # 计数偏移
-            count = len(self._proxies) - 1
-            offset = OPEN_STEP * count
-            proxy.setPos(center.x() - proxy.size().width() / 2 + offset,
-                         center.y() - proxy.size().height() / 2 + offset)
+            view = self.view_state()
+            if view is not None:
+                center = view['center']
+                proxy.setPos(QtCore.QPointF(center['x'], center['y']) - proxy.boundingRect().center())
 
         # 新开的节点独占选中（其余取消）—— 保证"当前使用的在最前"
         self.select_only(key)

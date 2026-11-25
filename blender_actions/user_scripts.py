@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import traceback
+import uuid
 from types import ModuleType
 
 
@@ -32,8 +33,15 @@ def _managed_file(filepath, directory, script_id, entry, user_root):
         raise ValueError("用户脚本路径、编号或入口无效")
     if entry and not all(part.isidentifier() and not keyword.iskeyword(part) for part in entry.split(".")):
         raise ValueError("Python 入口应为函数名称，不包含括号或参数")
-    filepath = Path(filepath).resolve()
+    raw = Path(filepath)
+    filepath = raw.resolve()
     payload = Path(directory).resolve()
+    if payload == user_root:
+        if (raw.is_symlink() or filepath.parent != user_root or not filepath.is_file()
+                or filepath.name.startswith('.') or filepath.suffix.lower() != '.py' or entry
+                or script_id != 'user_' + uuid.uuid5(uuid.NAMESPACE_URL, filepath.name).hex):
+            raise ValueError("请选择 Blender 用户插件目录内的 Python 脚本")
+        return filepath, payload
     if (payload.name != "files" or payload.parent.parent != user_root
             or not filepath.is_relative_to(payload) or filepath.suffix.lower() != ".py"):
         raise ValueError("请选择 Blender 用户插件目录内已导入的 Python 脚本")
@@ -83,7 +91,7 @@ def user_script(op="run", filepath=None, entry="", script_id="", directory=None,
     if threading.current_thread() is not threading.main_thread():
         raise RuntimeError("用户脚本必须在 Blender 主线程执行")
     if op == "info":
-        return {"version": 1, "languages": ["python"], "python_version": list(sys.version_info[:3])}
+        return {"version": 1, "flat_files": True, "languages": ["python"], "python_version": list(sys.version_info[:3])}
     if op != "run":
         raise ValueError("未知用户脚本操作")
     filepath, payload = _managed_file(filepath, directory, script_id, entry, user_root)

@@ -27,6 +27,14 @@ QToolButton[qzRole="activity"]:hover { background: #2a2a2a; }
 QToolButton[qzRole="activity"]:checked { background: #2a2a2a; border-left-color: #cccccc; }
 QToolButton[qzRole="activity"]:checked:hover { background: #2f2f2f; }
 
+QToolButton#PluginTreeRefresh {
+    background: transparent; border: 1px solid transparent; border-radius: 3px; padding: 0;
+}
+QToolButton#PluginTreeRefresh:hover, QToolButton#PluginTreeRefresh:focus {
+    background: #303030; border-color: #505050;
+}
+QToolButton#PluginTreeRefresh:pressed { background: #383838; }
+
 QTreeWidget#PluginTree {
     background: #252526; color: #cccccc; border: none; outline: 0;
     selection-background-color: #37373d;
